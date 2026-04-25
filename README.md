@@ -15,8 +15,14 @@
 * **零下載費 (Zero Egress)**：管 15 間舖如果成日下載 4K 片，AWS 會好貴，Cloudflare R2 最慳錢。
 * **持久性**：舖頭部 Windows Restart 唔會影響已上傳嘅數據。
 
-## 🛠️ 下一步計劃 (Roadmap)
+## 🛠️ 開發進度 (Status)
+- [x] **SDK 升級**: 已全面轉用官方最新 `google-genai` SDK。
+- [x] **專家分析邏輯**: 實作咗「巡舖專家」模式，支援開放式商業洞察分析。
+- [x] **環境診斷**: 建立咗鏡頭視角分析工具 `analyze_camera_setup.py`。
 - [ ] 實現 `R2Uploader` 模組。
-- [ ] 整合 Gemini Vision API。
 - [ ] 建立自動化定時器 (Cron job)。
-- [ ] 擴展至 15 間店鋪配置文件。
+
+## 📦 安裝需求
+```bash
+pip3 install -U google-genai python-dotenv
+```
