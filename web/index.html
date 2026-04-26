@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HMT | 雲端錄影巡視廳</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg: #faf9f6; --milk-tea: #c4a484; --ink: #433d3c; --border: #eceae3; }
+        body { font-family: 'Inter', 'Nunito', sans-serif; background: var(--bg); color: var(--ink); margin: 0; padding: 40px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+        h1 { margin: 0; font-size: 1.8rem; font-weight: 800; letter-spacing: -0.02em; }
+        .logo { background: var(--milk-tea); color: white; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-weight: 900; margin-right: 15px; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px; }
+        .card { background: white; border: 1px solid var(--border); border-radius: 20px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); transition: transform 0.2s; }
+        .card:hover { transform: translateY(-5px); border-color: var(--milk-tea); }
+        .card-time { font-size: 0.8rem; color: #aaa; margin-bottom: 10px; }
+        .card-name { font-weight: 800; margin-bottom: 15px; font-size: 1rem; }
+        video { width: 100%; border-radius: 12px; background: black; }
+        .badge { background: #f0efeb; padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div style="display: flex; align-items: center;">
+            <div class="logo">HMT</div>
+            <h1>雲端錄影巡視廳</h1>
+        </div>
+        <div id="status" class="badge">正在讀取最新錄影...</div>
+    </div>
+    
+    <div class="grid" id="video-grid"></div>
+
+    <script>
+        async function loadVideos() {
+            try {
+                const res = await fetch('/api/videos');
+                const videos = await res.json();
+                const container = document.getElementById('video-grid');
+                document.getElementById('status').innerText = `目前有 ${videos.length} 段錄影 (保留最近3日)`;
+                
+                container.innerHTML = videos.map(v => `
+                    <div class="card">
+                        <div class="card-time">${new Date(v.time).toLocaleString('zh-HK')}</div>
+                        <div class="card-name">📍 ${v.name}</div>
+                        <video controls preload="none">
+                            <source src="/stream/${encodeURIComponent(v.name)}" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video>
+                        <div style="margin-top: 10px;">
+                            <span class="badge">${v.size}</span>
+                            <span class="badge">5分鐘一段</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        loadVideos();
+        setInterval(loadVideos, 60000);
+    </script>
+</body>
+</html>
