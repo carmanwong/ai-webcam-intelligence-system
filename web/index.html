@@ -3,62 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HMT | 雲端錄影巡視廳</title>
+    <title>HMT | 雙軌錄影測試廳</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
     <style>
-        :root { --bg: #faf9f6; --milk-tea: #c4a484; --ink: #433d3c; --border: #eceae3; }
-        body { font-family: 'Inter', 'Nunito', sans-serif; background: var(--bg); color: var(--ink); margin: 0; padding: 40px; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
-        h1 { margin: 0; font-size: 1.8rem; font-weight: 800; letter-spacing: -0.02em; }
-        .logo { background: var(--milk-tea); color: white; width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-weight: 900; margin-right: 15px; }
-        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px; }
-        .card { background: white; border: 1px solid var(--border); border-radius: 20px; padding: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); transition: transform 0.2s; }
-        .card:hover { transform: translateY(-5px); border-color: var(--milk-tea); }
-        .card-time { font-size: 0.8rem; color: #aaa; margin-bottom: 10px; }
-        .card-name { font-weight: 800; margin-bottom: 15px; font-size: 1rem; }
-        video { width: 100%; border-radius: 12px; background: black; }
-        .badge { background: #f0efeb; padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; color: #666; }
+        :root { --bg: #faf9f6; --milk-tea: #c4a484; --ink: #433d3c; --border: #eceae3; --coral: #f8b4a6; }
+        body { font-family: 'Inter', 'Nunito', sans-serif; background: var(--bg); color: var(--ink); margin: 0; padding: 30px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        h1 { margin: 0; font-size: 1.5rem; font-weight: 800; }
+        h2 { font-size: 1.1rem; border-left: 4px solid var(--milk-tea); padding-left: 12px; margin: 30px 0 15px; color: var(--hmt-deep); }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+        .card { background: white; border: 1px solid var(--border); border-radius: 16px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.02); }
+        .card-time { font-size: 0.75rem; color: #aaa; margin-bottom: 8px; }
+        video { width: 100%; border-radius: 8px; background: #000; aspect-ratio: 16/9; }
+        .badge { background: #f0efeb; padding: 3px 8px; border-radius: 5px; font-size: 0.65rem; font-weight: 700; color: #666; margin-right: 5px; }
+        .summary-box { background: white; padding: 15px 25px; border-radius: 99px; border: 1px solid var(--milk-tea); display: flex; gap: 30px; font-weight: 700; font-size: 0.9rem; }
     </style>
 </head>
 <body>
     <div class="header">
-        <div style="display: flex; align-items: center;">
-            <div class="logo">HMT</div>
-            <h1>雲端錄影巡視廳</h1>
+        <h1>HMT Parallel Testing 🧪</h1>
+        <div class="summary-box">
+            <div>全量佔用: <span id="size-cont" style="color: var(--milk-tea)">--</span></div>
+            <div>感應佔用: <span id="size-motion" style="color: var(--coral)">--</span></div>
         </div>
-        <div id="status" class="badge">正在讀取最新錄影...</div>
     </div>
     
-    <div class="grid" id="video-grid"></div>
+    <h2>軌道 A：全量錄影 (5 分鐘一段 - 無間斷)</h2>
+    <div class="grid" id="grid-cont"></div>
+
+    <h2>軌道 B：感應錄影 (有人郁先錄 - 30 秒精華)</h2>
+    <div class="grid" id="grid-motion"></div>
 
     <script>
-        async function loadVideos() {
-            try {
-                const res = await fetch('/api/videos');
-                const videos = await res.json();
-                const container = document.getElementById('video-grid');
-                document.getElementById('status').innerText = `目前有 ${videos.length} 段錄影 (保留最近3日)`;
-                
-                container.innerHTML = videos.map(v => `
-                    <div class="card">
-                        <div class="card-time">${new Date(v.time).toLocaleString('zh-HK')}</div>
-                        <div class="card-name">📍 ${v.name}</div>
-                        <video controls preload="none">
-                            <source src="/stream/${encodeURIComponent(v.name)}" type="video/mp4">
-                            Your browser does not support the video tag.
-                        </video>
-                        <div style="margin-top: 10px;">
-                            <span class="badge">${v.size}</span>
-                            <span class="badge">5分鐘一段</span>
-                        </div>
-                    </div>
-                `).join('');
-            } catch (e) {
-                console.error(e);
-            }
+        async function fetchVideos(type) {
+            const res = await fetch(`/api/videos?type=${type}`);
+            return await res.json();
         }
-        loadVideos();
-        setInterval(loadVideos, 60000);
+
+        async function refresh() {
+            const [cont, motion] = await Promise.all([fetchVideos('continuous'), fetchVideos('motion')]);
+            
+            const render = (list) => list.map(v => `
+                <div class="card">
+                    <div class="card-time">${new Date(v.time).toLocaleString('zh-HK')}</div>
+                    <video controls preload="none"><source src="/stream/${encodeURIComponent(v.name)}" type="video/mp4"></video>
+                    <div style="margin-top: 8px;"><span class="badge">${v.size}</span></div>
+                </div>
+            `).join('');
+
+            document.getElementById('grid-cont').innerHTML = render(cont);
+            document.getElementById('grid-motion').innerHTML = render(motion);
+
+            const sum = (list) => list.reduce((a, b) => a + parseFloat(b.size), 0).toFixed(2) + " MB";
+            document.getElementById('size-cont').innerText = sum(cont);
+            document.getElementById('size-motion').innerText = sum(motion);
+        }
+
+        refresh();
+        setInterval(refresh, 30000);
     </script>
 </body>
 </html>

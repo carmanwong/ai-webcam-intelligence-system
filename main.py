@@ -5,23 +5,37 @@ from datetime import datetime
 from google import genai
 from dotenv import load_dotenv
 
-# 1. 初始化與環境檢查
 load_dotenv()
-API_KEY = os.getenv("GEMINI_API_KEY")
-if not API_KEY:
-    print("❌ 錯誤: 搵唔到 GEMINI_API_KEY")
-    exit(1)
 
-client = genai.Client(api_key=API_KEY)
+def _read_int_env(name, default):
+    raw_value = os.getenv(name, "").strip()
+    if not raw_value:
+        return default
+    try:
+        return int(raw_value)
+    except ValueError:
+        return default
 
 class HMTStoreMonitor:
     def __init__(self, store_id, rtsp_url):
         self.store_id = store_id
         self.rtsp_url = rtsp_url
-        self.local_path = "/home/ubuntu/clips"
-        self.target_jid = "120363425686019694@g.us" # Cam 234 📹
-        self.bot_tool_path = "/home/ubuntu/whatsapp-baileys-bot-migration/tools/send_whatsapp_message.mjs"
+        self.local_path = os.getenv("HMT_CLIPS_DIR", "/tmp/hmt/clips")
+        self.target_jid = os.getenv("HMT_TARGET_JID", "120363425686019694@g.us")
+        self.bot_tool_path = os.getenv(
+            "HMT_BOT_TOOL_PATH",
+            "/home/ubuntu/whatsapp-baileys-bot-migration/tools/send_whatsapp_message.mjs"
+        )
+        self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        self._ai_client = None
         os.makedirs(self.local_path, exist_ok=True)
+
+    def get_ai_client(self):
+        if not self.api_key:
+            raise RuntimeError("搵唔到 GEMINI_API_KEY，無法做 AI 分析。")
+        if self._ai_client is None:
+            self._ai_client = genai.Client(api_key=self.api_key)
+        return self._ai_client
 
     def cleanup_old_clips(self, days=3):
         """ 自動刪除舊片 """
@@ -36,7 +50,7 @@ class HMTStoreMonitor:
         """ 使用 FFmpeg 錄製影片 """
         try:
             self.cleanup_old_clips(days=3)
-        except:
+        except Exception:
             pass
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{self.store_id}_{timestamp}.mp4"
@@ -49,24 +63,37 @@ class HMTStoreMonitor:
             "-t", str(duration),
             "-c", "copy", filepath
         ]
+        command[-1:-1] = ["-movflags", "+faststart", "-tag:v", "hvc1"]
         
         try:
-            # 增加連線超時，支持高畫質大檔案
-            result = subprocess.run(command, capture_output=True, text=True, timeout=duration + 120)
-            if result.returncode == 0:
+            timeout_seconds = duration + _read_int_env("HMT_CAPTURE_TIMEOUT_EXTRA", 120)
+            result = subprocess.run(command, capture_output=True, text=True, timeout=timeout_seconds)
+            if result.returncode == 0 and os.path.exists(filepath) and os.path.getsize(filepath) > 0:
                 print(f"✅ 成功儲存: {filepath}")
                 return filepath
             else:
-                print(f"❌ 錄製失敗: {result.stderr[-100:]}")
+                stderr_tail = (result.stderr or "").strip()[-500:]
+                print(f"❌ 錄製失敗: {stderr_tail or 'ffmpeg 無輸出可參考'}")
+                if os.path.exists(filepath):
+                    try:
+                        os.remove(filepath)
+                    except OSError:
+                        pass
                 return None
         except Exception as e:
             print(f"❌ 錄製異常: {e}")
+            if os.path.exists(filepath):
+                try:
+                    os.remove(filepath)
+                except OSError:
+                    pass
             return None
 
     def analyze_behavior(self, video_path):
         """ 使用 Gemini 分析巡舖片段 """
         print(f"🤖 正在分析巡舖片段: {os.path.basename(video_path)}")
         try:
+            client = self.get_ai_client()
             video_file = client.files.upload(file=video_path)
             while video_file.state == "PROCESSING":
                 time.sleep(2)
@@ -106,10 +133,11 @@ class HMTStoreMonitor:
             print("❌ WhatsApp 發送失敗")
 
 if __name__ == "__main__":
-    STORE_ID = "CM234"
-    RTSP_URL = "rtsp://admin:Hello1234@192.168.1.113:554/h264Preview_01_main"
+    STORE_ID = os.getenv("HMT_STORE_ID", "CM234")
+    RTSP_URL = os.getenv("HMT_RTSP_URL", "rtsp://admin:Hello1234@192.168.1.113:554/h264Preview_01_main")
+    probe_duration = _read_int_env("HMT_PROBE_DURATION", 5)
     bot = HMTStoreMonitor(STORE_ID, RTSP_URL)
-    print("🧪 正在手動測試連線...")
-    path = bot.capture_clip(duration=5)
+    print(f"🧪 正在手動測試連線... ({probe_duration} 秒)")
+    path = bot.capture_clip(duration=probe_duration)
     if path:
         print(f"🎉 測試成功！文件: {path}")
