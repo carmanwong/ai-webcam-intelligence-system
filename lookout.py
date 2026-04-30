@@ -31,6 +31,7 @@ IDLE_SLEEP = read_int_env("HMT_IDLE_SLEEP", 60)
 OPERATING_START = os.getenv("HMT_OPERATING_START", "08:00")
 OPERATING_END = os.getenv("HMT_OPERATING_END", "22:45")
 ENABLE_ANALYSIS = read_bool_env("HMT_ENABLE_ANALYSIS", True)
+RECORD_QUALITY = os.getenv("HMT_RECORD_QUALITY", "medium").strip().lower() or "medium"
 
 def log(message):
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -96,7 +97,7 @@ def run_continuous_recorder():
 
     log(
         f"🚀 HMT Recorder 啟動 "
-        f"(store={STORE_ID}, clip={CLIP_DURATION}s, analysis={'on' if ENABLE_ANALYSIS else 'off'}, "
+        f"(store={STORE_ID}, clip={CLIP_DURATION}s, quality={RECORD_QUALITY}, analysis={'on' if ENABLE_ANALYSIS else 'off'}, "
         f"hours={OPERATING_START}-{OPERATING_END})"
     )
 
@@ -111,7 +112,7 @@ def run_continuous_recorder():
                 continue
 
             last_idle_notice = ""
-            log(f"🎬 正在錄製 {CLIP_DURATION} 秒高畫質片段...")
+            log(f"🎬 正在錄製 {CLIP_DURATION} 秒片段...")
             clip_path = bot.capture_clip(duration=CLIP_DURATION)
 
             if not clip_path:

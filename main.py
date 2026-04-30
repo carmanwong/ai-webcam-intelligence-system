@@ -16,6 +16,10 @@ def _read_int_env(name, default):
     except ValueError:
         return default
 
+def _read_text_env(name, default):
+    raw_value = os.getenv(name, "").strip()
+    return raw_value or default
+
 class HMTStoreMonitor:
     def __init__(self, store_id, rtsp_url):
         self.store_id = store_id
@@ -25,6 +29,10 @@ class HMTStoreMonitor:
         self.bot_tool_path = os.getenv(
             "HMT_BOT_TOOL_PATH",
             "/home/ubuntu/whatsapp-baileys-bot-migration/tools/send_whatsapp_message.mjs"
+        )
+        self.sub_rtsp_url = os.getenv(
+            "HMT_RTSP_URL_SUB",
+            "rtsp://admin:Hello1234@192.168.1.113:554/h264Preview_01_sub"
         )
         self.api_key = os.getenv("GEMINI_API_KEY", "").strip()
         self._ai_client = None
@@ -43,6 +51,8 @@ class HMTStoreMonitor:
         cutoff = now - (days * 86400)
         for f in os.listdir(self.local_path):
             file_path = os.path.join(self.local_path, f)
+            if f.endswith(".partial"):
+                continue
             if os.path.isfile(file_path) and os.path.getmtime(file_path) < cutoff:
                 os.remove(file_path)
 
@@ -55,36 +65,78 @@ class HMTStoreMonitor:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"{self.store_id}_{timestamp}.mp4"
         filepath = os.path.join(self.local_path, filename)
+        partial_filepath = os.path.join(self.local_path, f"{self.store_id}_{timestamp}.partial.mp4")
 
-        print(f"🎥 [{self.store_id}] 正在錄製 {duration}秒 片段...")
+        quality_profile = _read_text_env("HMT_RECORD_QUALITY", "medium").lower()
+        input_rtsp_url = self.rtsp_url
+        source_label = "main"
         command = [
             "ffmpeg", "-y", "-rtsp_transport", "tcp",
-            "-i", self.rtsp_url,
-            "-t", str(duration),
-            "-c", "copy", filepath
+            "-i", input_rtsp_url,
+            "-t", str(duration)
         ]
-        command[-1:-1] = ["-movflags", "+faststart", "-tag:v", "hvc1"]
+
+        if quality_profile == "high":
+            print(f"🎥 [{self.store_id}] 正在錄製 {duration}秒 片段... (quality=high, source=main)")
+            command.extend([
+                "-c", "copy",
+                "-movflags", "+faststart",
+                "-tag:v", "hvc1",
+                partial_filepath
+            ])
+        elif quality_profile == "low":
+            input_rtsp_url = self.sub_rtsp_url
+            source_label = "sub"
+            command[5] = input_rtsp_url
+            print(f"🎥 [{self.store_id}] 正在錄製 {duration}秒 片段... (quality=low, source={source_label})")
+            command.extend([
+                "-vf", "scale=640:-2,fps=8",
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-crf", str(_read_int_env("HMT_RECORD_CRF", 31)),
+                "-maxrate", _read_text_env("HMT_RECORD_MAXRATE", "900k"),
+                "-bufsize", _read_text_env("HMT_RECORD_BUFSIZE", "1800k"),
+                "-c:a", "aac",
+                "-b:a", _read_text_env("HMT_RECORD_AUDIO_BITRATE", "32k"),
+                "-ac", "1",
+                "-movflags", "+faststart",
+                partial_filepath
+            ])
+        else:
+            input_rtsp_url = self.sub_rtsp_url
+            source_label = "sub"
+            command[5] = input_rtsp_url
+            print(f"🎥 [{self.store_id}] 正在錄製 {duration}秒 片段... (quality=medium, source={source_label})")
+            command.extend([
+                "-c", "copy",
+                "-movflags", "+faststart",
+                "-tag:v", "avc1",
+                partial_filepath
+            ])
         
         try:
+            if os.path.exists(partial_filepath):
+                os.remove(partial_filepath)
             timeout_seconds = duration + _read_int_env("HMT_CAPTURE_TIMEOUT_EXTRA", 120)
             result = subprocess.run(command, capture_output=True, text=True, timeout=timeout_seconds)
-            if result.returncode == 0 and os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+            if result.returncode == 0 and os.path.exists(partial_filepath) and os.path.getsize(partial_filepath) > 0:
+                os.replace(partial_filepath, filepath)
                 print(f"✅ 成功儲存: {filepath}")
                 return filepath
             else:
                 stderr_tail = (result.stderr or "").strip()[-500:]
                 print(f"❌ 錄製失敗: {stderr_tail or 'ffmpeg 無輸出可參考'}")
-                if os.path.exists(filepath):
+                if os.path.exists(partial_filepath):
                     try:
-                        os.remove(filepath)
+                        os.remove(partial_filepath)
                     except OSError:
                         pass
                 return None
         except Exception as e:
             print(f"❌ 錄製異常: {e}")
-            if os.path.exists(filepath):
+            if os.path.exists(partial_filepath):
                 try:
-                    os.remove(filepath)
+                    os.remove(partial_filepath)
                 except OSError:
                     pass
             return None
